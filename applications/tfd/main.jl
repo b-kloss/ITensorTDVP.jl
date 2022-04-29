@@ -2,13 +2,18 @@ using ITensors
 using ITensorTDVP
 using Observers
 include("./boson.jl")
+include("./model.jl")
+include("./gates.jl")
+
+let
+
 N = 16
-dim=6
+dim=16
 s = siteinds("S=1/2", N, conserve_qns=true)
 #@show s,typeof(s)
-phys_bos = siteinds("MyBoson", N,dim=8,conserve_qns=false,conserve_number=false,)
-ancs_bos = siteinds("MyBoson", N,dim=8, conserve_qns=false,conserve_number=false)
-els = siteinds("Fermion",N,conserve_qns=false)
+phys_bos = siteinds("MyBoson", N,dim=dim,conserve_qns=true,conserve_number=false,)
+ancs_bos = siteinds("MyBoson", N,dim=dim, conserve_qns=true,conserve_number=false)
+els = siteinds("Fermion",N,conserve_qns=true)
 ancs_bos = addtags(ancs_bos,",ancilla")
 #sites=Vector{Index{Vector{Pair{QN, Int64}}}}()
 sites=Vector{Index}()
@@ -17,76 +22,44 @@ for (x,y,z) in zip(phys_bos,els,ancs_bos)
     append!(sites,(x,y,z))
 end
 
+gates=tfd_holstein_gates(sites, 0.01,2, 1.0,1.0,1.0,0.4)
 states = [n == div(N,2) ? [1,"Occ",1] : [1,"Emp",1] for n=1:N]
-
+N=N
+opsum=tfd_holstein(N;omega=1.0,t=1.0,alpha=1.0, T=0.4, order=["phys_bos","el","anc_bos"])
 states=reduce(vcat,states)
 @show states
+@show typeof(sites[1])
 #@show states
 #states = [isodd(n) ? "Up" : "Dn" for n=1:N]
 #@show typeof(states)
 #@show typeof(s)
-function theta(omega, beta)
-    return atanh(exp(-beta * omega / 2.))
-end
 
-function V(alpha,omega,T)
-    if T==0.0
-        return alpha
-    else
-        return alpha*cosh(theta(omega,1.0/T))
-    end
-end
 
-function Vtilde(alpha,omega,T)
-    if T==0.0
-        return 0.0
-    else
-        return alpha*sinh(theta(omega,1.0/T))
-    end
-end
-    
-
-function tfd_holstein(n;omega=1.0,t=1.0, alpha=1.0, T=0.0, order=["phys_bos","el","anc_bos"])
-    os = OpSum()
-    @assert order==["phys_bos","el","anc_bos"]
-    elpos=2
-    ancpos=3
-    physpos=1
-    for j in 1:(n - 1)
-      elj=elpos
-      os += t,"C", 3*(j-1)+elj, "Cdag", 3*(j) +elj
-      os += t,"Cdag", 3*(j-1)+elj, "C", 3*(j) +elj
-    end
-    for j in 1:N
-      os += Vtilde(alpha,omega,T),"n", 3*(j-1)+elpos, "A", 3*(j-1) + ancpos   #Vdag
-      os += Vtilde(alpha,omega,T),"n", 3*(j-1)+elpos, "Adag", 3*(j-1) + ancpos
-      os += V(alpha,omega,T),"A", 3*(j-1) + physpos, "n", 3*(j-1)+elpos   #V
-      os += V(alpha,omega,T), "Adag", 3*(j-1) + physpos, "n", 3*(j-1)+elpos
-      os += omega, "N", 3*(j-1)+physpos #local oscillator
-      os += -omega, "N", 3*(j-1)+ancpos #local ancilla oscillator
-    end
-    return os
-  end
 
 ψ = MPS(ComplexF64,sites, states)
-ψ2 = randomMPS(ComplexF64,sites, states;linkdims=16)
-normalize!(ψ2)
-ψ = ψ + 1e-8 * ψ2
-ψ2 = randomMPS(ComplexF64,sites;linkdims=8)
-normalize!(ψ2)
-ψ = ψ + 1e-5 * ψ2
+for i in 1:100
+  for gate in gates
+    ψ = apply(gate,ψ,cutoff=1e-16)
+  end
+end
+@show linkdims(ψ) 
+#ψ2 = randomMPS(ComplexF64,sites, states;linkdims=16)
+#normalize!(ψ2)
+#ψ = ψ + 1e-8 * ψ2
+#ψ2 = randomMPS(ComplexF64,sites;linkdims=8)
+#normalize!(ψ2)
+#ψ = ψ + 1e-8 * ψ2
 @show maxlinkdim(ψ)
-@show ψ[4]
-@show ψ[5]
-@show ψ[6]
+#@show ψ[4]
+#@show ψ[5]
+#@show ψ[6]
 
 
 Nphys_sites=div(length(ψ),3)
 @show  expect(ψ, "N"; sites=[(3*(j-1) + 2) for j in 1:Nphys_sites])
-opsum=tfd_holstein(N,omega=1.0,t=1.0,alpha=1.0, T=0.4, order=["phys_bos","el","anc_bos"]),sites
+@show typeof(opsum)
 #@show typeof(opsum[2])
-H = MPO(opsum[1],sites)
-H2 = MPO(opsum[1],opsum[2])
+H = MPO(opsum,sites)
 #@show siteinds(H)
 #@show siteinds(H2)
 
@@ -100,7 +73,7 @@ end
 
 function bonddim(;psi,bond,half_sweep)
     if bond == 1 && half_sweep == 2
-       return maxlinkdim(psi)
+       return linkdims(psi)
     end
     return nothing
 end
@@ -119,7 +92,7 @@ function current_time(; current_time, bond, half_sweep)
 obs = Observer(
     "pops" => measure_pop,  "steps" => step, "times" => current_time,"maxdim" => bonddim
   )
-@show inner(ψ', H2, ψ) / inner(ψ, ψ)
+@show inner(ψ', H, ψ) / inner(ψ, ψ)
 cutoff = 1e-12
 tau = 0.1
 ttotal = 2.0
@@ -130,9 +103,10 @@ ttotal = 2.0
   ψ;
   time_step=-im * tau,
   maxdim=64,
-  cutoff=cutoff,
+  cutoff=cutoff*10e6,
+  cutoff_compress=cutoff,
   outputlevel=1,
-  nsite=2,
+  nsite=1,
   (observer!)=obs,
 )
 
@@ -144,3 +118,4 @@ psis = res["pops"]
 maxdim = res["maxdim"]
 
 @show res
+end

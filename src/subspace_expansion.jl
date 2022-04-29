@@ -71,8 +71,13 @@ function subspace_expansion!(
   n1, n2 = b
   PH.nsite = 2
   old_linkdim = dim(commonind(ψ[n1], ψ[n2]))
-  cutoff_compress = get(kwargs, :cutoff_compress, 1e-12)
-
+  cutoff_compress = get(kwargs, :cutoff_compress, 0.0)
+  if cutoff_compress==0.0
+    if old_linkdim >= maxdim
+      #println("not expanding ", cutoff_compress)
+      return nothing
+    end
+  end
   ###move orthogonality center to bond, check whether there are vanishing contributions to the wavefunctions and truncate accordingly
   if llim == n1
     @assert rlim == n2 + 1
@@ -94,12 +99,12 @@ function subspace_expansion!(
     old_linkdim = dim(commonind(U, S))
     bondtensor = S
   end
-
-  ###don't expand if we are already at maxdim
   if old_linkdim >= maxdim
-    println("not expanding")
+    #println("not expanding")
     return nothing
   end
+  ###don't expand if we are already at maxdim
+  
   position!(PH, ψ, min(n1, n2))
 
   #orthogonalize(ψ,n1)

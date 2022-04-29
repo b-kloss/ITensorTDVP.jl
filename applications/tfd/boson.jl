@@ -28,8 +28,8 @@ ITensors.val(vn::ValName, st::SiteType"MyBoson") = val(vn, alias(st))
 
 ITensors.state(sn::StateName, st::SiteType"MyBoson", s::Index) = state(sn, alias(st), s)
 
-ITensors.op(on::OpName, st::SiteType"MyBoson", s::Index) = op(on, alias(st), s)
+ITensors.op(on::OpName, st::SiteType"MyBoson", s::Index) = ITensors.op(on, alias(st), s)  ##Why do I need to put ITensors here?
 
 ##override fermionic (Jordan Wigner string) ordering operator F to identity for boson sites
-ITensors.op(on::OpName"F", st::SiteType"MyBoson", s::Index) = op(OpName("Id"), alias(st), s)
-ITensors.op(on::OpName"F", st::SiteType"Qudit", s::Index) = op(OpName("Id"), st, s)
+ITensors.op(on::OpName"F", st::SiteType"MyBoson", s::Index) = ITensors.op(OpName("Id"), alias(st), s)
+ITensors.op(on::OpName"F", st::SiteType"Qudit", s::Index) = ITensors.op(OpName("Id"), st, s)
