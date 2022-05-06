@@ -28,7 +28,7 @@ function U_elph(siteinds, i::Int; τ,alpha,omega,t,T)
         return exp(τ * h)
       end
     
-  function U_elel(siteinds, i::Int,j::Int; τ,alpha,omega,t,T)
+  function U_elel(siteinds, i::Int,j::Int; τ,alpha,omega,t,T) ##this is not parallelizable, would need to further split by even/odd terms
         elpos=2
         ancpos=3
         physpos=1
@@ -41,11 +41,13 @@ function U_elph(siteinds, i::Int; τ,alpha,omega,t,T)
           return exp(τ * h)
         end
 
-function tfd_holstein_gates(sites, tau,order, alpha,omega,t,T)
+
+function _get_gates_2ndorder(sites, tau,alpha,omega,t,T)
     N=div(length(sites),3)
     anc_gates = Vector{ITensor}()
     phys_gates = Vector{ITensor}()
     el_gates = Vector{ITensor}()
+    
     for i in 1:N
         push!(anc_gates,U_elanc(sites,i;τ=-tau * im /2., alpha,omega,t,T))
         push!(phys_gates,U_elph(sites,i;τ=-tau * im /2., alpha,omega,t,T))
@@ -55,6 +57,29 @@ function tfd_holstein_gates(sites, tau,order, alpha,omega,t,T)
     end
     gates=[phys_gates,anc_gates,el_gates,el_gates,reverse(anc_gates),reverse(phys_gates)]
     return gates
-    #anc_gates=ops([("expτ-elanc", (n), (τ=-tau * im /2., alpha=alpha,omega=omega,t=t,T=T)) for n in range(1,N,step=1)], sites)
-     
+  end
+
+function tfd_holstein_gates(sites, tau,order, alpha,omega,t,T)  ###electron hopping is not parallelizable in this form
+    if order==2
+      gates = _get_gates_2ndorder(sites, tau,alpha,omega,t,T)
+      gates = collect(Iterators.flatten([gates,]))
+      @show typeof(gates)
+    elseif order==4 ###does not seem to perform as well as expected
+      
+      variant=1
+      if variant==1
+        s = 1.0 / ( 2.0 - 2.0^(1.0/3.0) )
+        A = _get_gates_2ndorder(sites, s*tau,alpha,omega,t,T)
+        B = _get_gates_2ndorder(sites, (1.0 -2.0*s)*tau,alpha,omega,t,T)
+        gates = collect(Iterators.flatten([A,B,A]))
+      elseif variant==2
+        s2 = 1.0 / ( 4.0 - 4.0^(1.0/3.0) )
+        A = _get_gates_2ndorder(sites, s2*tau,alpha,omega,t,T)
+        B = _get_gates_2ndorder(sites, (1.0 - 4.0*s2)*tau,alpha,omega,t,T)
+        gates = collect(Iterators.flatten([A,A,B,A,A]))
+      end
+      @show typeof(gates)
+    end
+    return gates
+    
 end

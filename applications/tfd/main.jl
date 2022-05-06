@@ -35,14 +35,14 @@ end
 
 
 let
-tebd_cutoff=1e-18
-tebd_dt=0.01
-tebd_order = 2  #2 or 4(not implemented yet)
+tebd_cutoff=1e-14
+tebd_dt=0.05
+tebd_order = 2  #2 or 4(4 doesn't seem to work as well as it should)
 log_dt=0.1
 tdvp_dt=0.05
 tdvp_cutoff=1e-12
 tdvp_cutoff_compress=0.0
-tdvp_nsite=1
+tdvp_nsite=2
 tdvp_maxdim=64
 N = 16
 dim=16
@@ -173,6 +173,8 @@ for i in range(1,13)
   center_value2=measure_corr_ij([ψ,],[ψ0],1,1,conjugate=false)
   @show i, center_value2
   println(maxlinkdim(ψ)," ",minimum(linkdims(ψ)))
+
+  @show inner(ψ',H,ψ)
 end
 #PH=ProjMPO(H)
 for i in range(1,10)
@@ -180,6 +182,7 @@ for i in range(1,10)
     tdvp_cutoff_compress=1e-12
   end
   @time ψ,H=propagate!(ψ,H,tdvp_step!)
+  @show inner(ψ',H,ψ)
 end
 
 @show inner(ϕ', H, ϕ) / inner(ϕ, ϕ)
