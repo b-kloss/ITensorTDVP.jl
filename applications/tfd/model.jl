@@ -29,8 +29,8 @@ function tfd_holstein(n;omega=1.0,t=1.0, alpha=1.0, T=0.0, order=["phys_bos","el
     for j in 1:(n - 1)
       elj=elpos
       
-      os += t,"Cdag", 3*(j-1)+elj, "C", 3*(j) +elj
-      os += t,"Cdag", 3*(j) +elj , "C", 3*(j-1)+elj
+      os += -t,"Cdag", 3*(j-1)+elj, "C", 3*(j) +elj
+      os += -t,"Cdag", 3*(j) +elj , "C", 3*(j-1)+elj
     end
     for j in 1:n
       os += Vtilde(alpha,omega,T),"n", 3*(j-1)+elpos, "A", 3*(j-1) + ancpos   #Vdag

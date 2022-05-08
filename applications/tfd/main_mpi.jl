@@ -2,6 +2,11 @@ using ITensors
 using ITensorTDVP
 using HDF5
 import MPI
+using TickTock
+using LinearAlgebra
+#using ConfParser
+include("./params.jl")
+using Main.params
 MPI.Init()
 comm = MPI.COMM_WORLD
 
@@ -9,7 +14,7 @@ comm = MPI.COMM_WORLD
 include("./boson.jl")
 include("./model.jl")
 include("./gates.jl")
-
+#include("./params.jl")
 
 function measure_corr_ij(kets,bras,i,j; conjugate=false)
   if conjugate
@@ -30,17 +35,18 @@ function measure_corr(ket,bra;conjugate=true)
  function measure_corr(i::Int,sendpsi::MPS,recvpsi::MPS,sendpsi0::MPS)
     root=i
     recvpsi=MPI.bcast(sendpsi,root,comm)
-    gf = measure_corr(sendpsi,recvpsi,conjugate=true)
-    gfhalf = measure_corr(sendpsi0,recvpsi,conjugate=false)
-    allgf=MPI.Gather(gf, root,comm)
-    allgfhalf=MPI.Gather(gfhalf, root,comm)
+    gf = measure_corr(sendpsi,recvpsi;conjugate=true)
+    gfhalf = measure_corr(sendpsi0,recvpsi;conjugate=false)
+    allgf=MPI.Allgather(gf, comm)
+    allgfhalf=MPI.Allgather(gfhalf, comm)
+    #@show MPI.Comm_rank(comm), i, allgf, allgfhalf 
     return allgf,allgfhalf
 end
 
 function measure_corr(sendpsi::MPS,recvpsi::MPS,sendpsi0::MPS)
     Nphys_sites=div(length(sendpsi),3)
-    results=Vector{Vector{ComplexF64}()}
-    results_half=Vector{Vector{ComplexF64}()}
+    results=Vector{Vector{ComplexF64}}()
+    results_half=Vector{Vector{ComplexF64}}()
     for i in 0:Nphys_sites-1
         gfs,gfs_half=measure_corr(i,sendpsi,recvpsi,sendpsi0)
         push!(results,gfs)
@@ -58,38 +64,59 @@ function log(fname, oname, time, data)
 end
 
 
-
-
-
+function set_threading(threading)
+    t=Threads.nthreads()
+    if threading=="BLAS"
+        BLAS.set_num_threads(t)
+        ITensors.Strided.disable_threads()
+        ITensors.disable_threaded_blocksparse()
+    elseif threading=="Strided"
+        BLAS.set_num_threads(1)
+        ITensors.Strided.enable_threads()
+        ITensors.disable_threaded_blocksparse()
+    elseif threading=="blocksparse"
+        BLAS.set_num_threads(1)
+        ITensors.Strided.disable_threads()
+        ITensors.enable_threaded_blocksparse()
+    end
+  end
 let
-outf="data.h5"
-outfid=h5open("data.h5","w")
-close(outfid)
-tebd_cutoff=1e-14
-tebd_dt=0.05
-tebd_order = 2  #2 or 4(4 doesn't seem to work as well as it should)
-log_dt=0.1
-tdvp_dt=0.05
-tdvp_cutoff=1e-12
-tdvp_cutoff_compress=0.0
-tdvp_nsite=2
-tdvp_maxdim=64
-final_time = 1.0
-N = 4
-dim=16
+#outf="data.h5"
 
+
+
+outfid=h5open(outf,"w")
+close(outfid)
+
+#threading="blocksparse" #"BLAS","Strided","blocksparse"
+set_threading(threading)
+#tebd_cutoff=1e-14
+#tebd_dt=0.05
+#tebd_order = 2  #2 or 4(4 doesn't seem to work as well as it should)
+#log_dt=0.1
+#final_time = 1.0
+#N = 4
+#dim=16
+@show N,omega,boson_dim
+#omega=1.0
+#t=1.0
+#gamma=sqrt(2.0)
+lambda=gamma^2/(2*t*omega)
+alpha=lambda
 total_Nsteps=convert(Int, ceil(abs( final_time / log_dt)))
 
 
 root = div(N,2)
 if MPI.Comm_rank(comm) == root
     print(" Running on $(MPI.Comm_size(comm)) processes\n")
+
 end
+@assert MPI.Comm_size(comm)==N
 rank=MPI.Comm_rank(comm)
 MPIsize=MPI.Comm_size(comm)
 
-phys_bos = siteinds("MyBoson", N,dim=dim,conserve_qns=true,conserve_number=false,)
-ancs_bos = siteinds("MyBoson", N,dim=dim, conserve_qns=true,conserve_number=false)
+phys_bos = siteinds("MyBoson", N,dim=boson_dim,conserve_qns=true,conserve_number=false,)
+ancs_bos = siteinds("MyBoson", N,dim=boson_dim, conserve_qns=true,conserve_number=false)
 els = siteinds("Fermion",N,conserve_qns=true)
 ancs_bos = addtags(ancs_bos,",ancilla")
 #sites=Vector{Index{Vector{Pair{QN, Int64}}}}()
@@ -120,7 +147,7 @@ function propagate!(ψ,PH,propfunc)
   return ψ,PH
 end
 
-opsum=tfd_holstein(N;omega=1.0,t=1.0,alpha=1.0, T=0.4, order=["phys_bos","el","anc_bos"])
+opsum=tfd_holstein(N;omega=omega,t=t,alpha=alpha, T=temperature, order=["phys_bos","el","anc_bos"])
 states = [n == rank+1 ? [1,"Occ",1] : [1,"Emp",1] for n=1:N]
 states=reduce(vcat,states)
 @show states
@@ -140,26 +167,36 @@ end
 #ϕ0 = nothing
 #ϕ0 = MPI.bcast(ψ0,root,comm)
 ϕ = MPI.bcast(ψ,root,comm)
-gf = measure_corr(ψ,ϕ,ψ0)
+allgf,allgf2 = measure_corr(ψ,ϕ,ψ0)
 E = inner(ψ',H,ψ)
-allgf=MPI.Gather(gf, root,comm)
+#allgf=MPI.Gather(gf, root,comm)
 allEs=MPI.Gather(E, root,comm)
 if rank==root
+    #@show allgf
     log(outf,"E",0.0,allEs)
-    log(outf,"gf",0.0,allgf)
+    log(outf,"gf_real",0.0,Matrix(reduce(hcat,real(allgf))'))
+    log(outf,"gf2_real",0.0,Matrix(reduce(hcat,real(allgf2))'))
+    log(outf,"gf_imag",0.0,Matrix(reduce(hcat,imag(allgf))'))
+    log(outf,"gf2_imag",0.0,Matrix(reduce(hcat,imag(allgf2))'))
 end
 if rank==root
     println("starting prop")
 end
+
+
+    
 @time begin
 for i in range(1,total_Nsteps)
   if rank==root
-    ψ,PH=propagate!(ψ,PH,tebd_step!)
+    @time ψ,PH=propagate!(ψ,PH,tebd_step!)
   else
     ψ,PH=propagate!(ψ,PH,tebd_step!)
   end
+  if rank==root
+    tick()
+  end
   allgf,allgf2=measure_corr(ψ,ϕ,ψ0)
-  @show allgf
+  #@show allgf
 
   #ϕ = MPI.bcast(ψ,root,comm)
   #
@@ -172,10 +209,18 @@ for i in range(1,total_Nsteps)
   #allEs=MPI.Gather(E, root,comm)
   if rank==root
     log(outf,"E",log_dt*i,allEs)
-    log(outf,"gf",log_dt*i*2,allgf)
-    log(outf,"gf2",log_dt*i,allgf2)
-    
+    log(outf,"gf_real",log_dt*i*2,Matrix(reduce(hcat,real(allgf))'))
+    log(outf,"gf2_real",log_dt*i,Matrix(reduce(hcat,real(allgf2))'))
+    log(outf,"gf_imag",log_dt*i*2,Matrix(reduce(hcat,imag(allgf))'))
+    log(outf,"gf2_imag",log_dt*i,Matrix(reduce(hcat,imag(allgf2))'))  
   end
+  MPI.Barrier(comm)
+  if rank==root
+    tock()
+    println("computing gfs and logging took overall")
+  end
+
+
 end
 end
 #PH=ProjMPO(H)
