@@ -5,7 +5,8 @@ import MPI
 using TickTock
 using LinearAlgebra
 #using ConfParser
-include("./params.jl")
+parameter_file=ARGS[1]
+include(parameter_file)
 using Main.params
 MPI.Init()
 comm = MPI.COMM_WORLD
