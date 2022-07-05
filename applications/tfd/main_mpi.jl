@@ -85,10 +85,6 @@ let
 #outf="data.h5"
 
 
-
-outfid=h5open(outf,"w")
-close(outfid)
-
 #threading="blocksparse" #"BLAS","Strided","blocksparse"
 set_threading(threading)
 #tebd_cutoff=1e-14
@@ -103,7 +99,7 @@ set_threading(threading)
 #t=1.0
 #gamma=sqrt(2.0)
 lambda=gamma^2/(2*t*omega)
-alpha=lambda
+alpha=gamma
 total_Nsteps=convert(Int, ceil(abs( final_time / log_dt)))
 
 
@@ -116,6 +112,12 @@ end
 rank=MPI.Comm_rank(comm)
 MPIsize=MPI.Comm_size(comm)
 
+
+if rank==root
+  outfid=h5open(outf,"w")
+  close(outfid)
+end
+
 phys_bos = siteinds("MyBoson", N,dim=boson_dim,conserve_qns=true,conserve_number=false,)
 ancs_bos = siteinds("MyBoson", N,dim=boson_dim, conserve_qns=true,conserve_number=false)
 els = siteinds("Fermion",N,conserve_qns=true)
@@ -127,18 +129,18 @@ for (x,y,z) in zip(phys_bos,els,ancs_bos)
     append!(sites,(x,y,z))
 end
 
-global tebd_gates=tfd_holstein_gates(sites, tebd_dt,tebd_order, 1.0,1.0,1.0,0.4)
-println("got gates")
+global tebd_gates=tfd_holstein_gates(sites, tebd_dt,tebd_order, alpha,omega,t,temperature)
+#println("got gates")
 
 function tebd_step!(psi::MPS, dummy)
-  println("doing TEBD step")
+  #println("doing TEBD step")
   Nsteps=convert(Int, ceil(abs(log_dt / tebd_dt)))
   for i in range(1,Nsteps)
     for gate in tebd_gates
       psi = apply(gate,psi,cutoff=tebd_cutoff)
     end
   end
-  println(maxlinkdim(psi)," ",minimum(linkdims(psi)))
+  
   return psi, dummy
 end
 
@@ -185,11 +187,10 @@ if rank==root
 end
 
 
-    
-@time begin
 for i in range(1,total_Nsteps)
   if rank==root
     @time ψ,PH=propagate!(ψ,PH,tebd_step!)
+    println(maxlinkdim(ψ)," ",minimum(linkdims(ψ)))
   else
     ψ,PH=propagate!(ψ,PH,tebd_step!)
   end
@@ -221,8 +222,6 @@ for i in range(1,total_Nsteps)
     println("computing gfs and logging took overall")
   end
 
-
-end
 end
 #PH=ProjMPO(H)
 end
