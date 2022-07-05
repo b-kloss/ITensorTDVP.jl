@@ -36,8 +36,8 @@ function U_elph(siteinds, i::Int; τ,alpha,omega,t,T)
         s1=siteinds[3*(i-1)+elpos]
         s2=siteinds[3*(j-1)+elpos]
         h =
-          t* op("Cdag", s1)* op("C", s2) +
-          t* op("Cdag", s2)* op("C", s1)
+          (-t) * op("Cdag", s1)* op("C", s2) +
+          (-t) * op("Cdag", s2)* op("C", s1)
           return exp(τ * h)
         end
 
