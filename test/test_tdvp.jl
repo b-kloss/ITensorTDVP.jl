@@ -237,7 +237,7 @@ end
 
     nsite = (step <= 3 ? 2 : 1)
     phi = tdvp(
-      H, -tau * im, phi; nsweeps=1, cutoff, nsite, normalize=true, exponentiate_krylovdim=15
+      H, -tau * im, phi; nsweeps=1, cutoff, nsite, expand=false,normalize=true, exponentiate_krylovdim=15
     )
 
     Sz1[step] = expect(psi, "Sz"; sites=c:c)[1]
@@ -286,7 +286,7 @@ end
 
 @testset "Subspace expansions vs 2-site evolution" begin
   N = 16
-  cutoff = 1e-12
+  cutoff = 1e-13
   tau = 0.05
   ttotal = 2.0
 
@@ -329,7 +329,7 @@ end
 
   phi = productMPS(s, n -> isodd(n) ? "Up" : "Dn")
 
-  phi = tdvp(H, -im * tau, phi; nsite=2, time_step=-im * tau, cutoff, normalize=false)
+  phi = tdvp(H, -im * 10*tau, phi; nsite=2, time_step=-im * tau, cutoff, normalize=false)
 
   psi = deepcopy(phi)
 
@@ -356,13 +356,14 @@ end
     -im * ttotal,
     psi;
     time_step=-im * tau,
-    cutoff=cutoff * 1e8,      ##not clear why this is so much larger than the 2-site TDVP cutoff for comparable bond dimensions?
+    cutoff=cutoff * 1e5,      ##not clear why this is so much larger than the 2-site TDVP cutoff for comparable bond dimensions?
     cutoff_compress=cutoff,
     normalize=false,
     nsite=1,
-    maxdim=100,
+    maxdim=256,
     expand=true,
     atol=1e-10,
+    krylov=false,
     #cutoff=5e-2,
     #atol=1e-11,
     (observer!)=TDVPObserver(),
@@ -375,7 +376,9 @@ end
   #@show norm(En1 - En2)
   #@show(Sz1)
   #@show(Sz2)
-
+  @show maxlinkdim(psi)
+  @show maxlinkdim(phi)
+  @show abs.(Sz1 - Sz2)
   @test norm(Sz1 - Sz2) < 1e-3
   @test norm(En1 - En2) < 1e-3
 end

@@ -130,10 +130,10 @@ function subspace_expansion!(
 
   ###add expansion direction to current site tensors
   ALⁿ¹, newl = ITensors.directsum(
-    ϕ_1, dag(newL), uniqueinds(ϕ_1, newL), uniqueinds(newL, ϕ_1); tags=("Left",)
+    ϕ_1 => uniqueinds(ϕ_1,newL), dag(newL) => uniqueinds(newL, ϕ_1); tags=("Left",)
   )
   ARⁿ², newr = ITensors.directsum(
-    ϕ_2, dag(newR), uniqueinds(ϕ_2, newR), uniqueinds(newR, ϕ_2); tags=("Right",)
+    ϕ_2 => uniqueinds(ϕ_2, newR), dag(newR) => uniqueinds(newR, ϕ_2); tags=("Right",)
   )
 
   ###TODO remove assertions regarding expansion not exceeding maxdim ?

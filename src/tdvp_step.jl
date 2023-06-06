@@ -16,8 +16,13 @@ function tdvp(
     maxdim = get(kwargs, :maxdim, 100)
     cutoff = get(kwargs, :cutoff, 1e-11)
     atol = get(kwargs, :atol, 1e-12)
-    cutoff_trunc = 0.5 * abs(time_step)^2 * cutoff ### cutoff_trunc is min. acceleration of population gain of expansion vectors, thus rescaling with timestep
-    ITensorTDVP.subspace_expansion_sweep!(psi, PH; maxdim, cutoff=cutoff_trunc, atol=atol)
+    do_krylov = get(kwargs, :krylov, false)
+    cutoff_trunc = 0.5 * abs(time_step)^2 * cutoff ### cutoff_trunc is min. acceleration of population gain of expansion vectors, thus rescaling with timestep\
+    if do_krylov
+      ITensorTDVP.subspace_expansion_krylov_sweep!(psi, PH; maxdim, cutoff=cutoff_trunc, atol=atol)
+    else
+      ITensorTDVP.subspace_expansion_sweep!(psi, PH; maxdim, cutoff=cutoff_trunc, atol=atol)
+    end
   end
 
   for substep in 1:length(sub_time_steps)
